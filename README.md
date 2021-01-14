@@ -25,12 +25,19 @@ This scripts enumerates all the differences among models (see Section 5.5).
 ## Generics
 Both scripts should be run from within the root directory of the project.  
 For debugging purposes, it is helpful to run them in IPython, so to have an interactive shell after the scripts finish.  
-You can do this with `ipython -i (verify|generate).py -- <arguments>`.  
+You can do this with `ipython -i <script name> -- <arguments>`.  
+
+# Models
+The models referenced in the paper can be found in the models/windows directory.  
+Each version of windows has its own sub-directory (e.g., Windows xp is in models/windows/xp).  
+The MiCreateImageFileMap.lmod file for each version contains the model of the kernel-mode phase of the loader.  
+LdrpInitializeProcess.lmod is the model for the user-space phase of the loader.  
+
 
 # Directory structure
 - parsers: the code for parsing the language and produce the IR  
 - backends: the code for different interpreters of the IR. Supported backends are:  
-  - z3 (by means of the pyz3 wrappers), for both test-case generation and validation  
+  - z3 (by means of the pyz3 wrappers), for all use-cases  
   - python, only for validation  
 - structures: mostly adapted from `angr`; here is the logic to parse C structures  
   - headers: the directory in which the parser looks for C header to use in models  
