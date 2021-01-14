@@ -1,0 +1,155 @@
+LOADREL ntkrnlmp
+
+DEFINE FILESIZE 500
+INPUT HEADER FILESIZE as DOSHeader
+
+V1: AND EQ HEADER.magic[0] "M" EQ HEADER.magic[1] "Z" term
+V2: ULE (ADD HEADER.e_lfanew 0xf8) FILESIZE term
+
+# MiVerifyImageHeader
+P: NT_HEADER <- HEADER[HEADER.e_lfanew, sizeof _IMAGE_NT_HEADERS] as _IMAGE_NT_HEADERS
+V3: EQ NT_HEADER.Signature 0x4550  term
+
+
+#### Start of MiVerifyImageHeader
+P: progHeader <- NT_HEADER.FileHeader as _IMAGE_FILE_HEADER
+V4: OR (NEq progHeader.Machine 0) (NEq progHeader.SizeOfOptionalHeader 0) term
+
+V6: NEq (BITAND progHeader.Characteristics 2) 0 term
+V7: Eq (BITAND HEADER.e_lfanew 3) 0 term
+
+P: optHdr <- NT_HEADER.OptionalHeader as _IMAGE_OPTIONAL_HEADER
+V8: Eq optHdr.Magic 0x10b term
+
+V9: OR (EQ (BITAND optHdr.FileAlignment 0x1ff) 0) (EQ optHdr.SectionAlignment optHdr.FileAlignment) term
+P: asd <- optHdr.FileAlignment
+V10: NEq optHdr.FileAlignment 0 term
+V11: ISPOW2 optHdr.SectionAlignment term
+V12: ISPOW2 optHdr.FileAlignment term
+V13: UGE optHdr.SectionAlignment optHdr.FileAlignment term
+V14: ULE optHdr.SizeOfImage 0x77000000 term
+V15: ULE progHeader.NumberOfSections 0x60 term
+V16: Eq progHeader.Machine 0x14c term
+
+#### End of MiVerifyImageHeader
+
+# MiCreateImageFileMap:274
+P: npages <- SHR optHdr.SizeOfImage 12
+V171: NEq BITAND optHdr.SizeOfImage 0xfff 0
+P(V171): npages <- Add npages 1
+# The following is npages != 0 in the code, but this is equivalent but easier to solve
+V17: NEq optHdr.SizeOfImage 0 term
+
+# MiCreateImageFileMap:337
+V18: Eq (BITAND optHdr.ImageBase 0xffff) 0 term
+
+# MiCreateImageFileMap:341
+V19: ULT optHdr.SizeOfHeaders optHdr.SizeOfImage term
+
+# MiCreateImageFileMap:406 else branch
+V20: UGE optHdr.SectionAlignment 0x1000
+V21(V20): NEq optHdr.SizeOfHeaders 0 term
+
+# MiCreateImageFileMap (defined at 345, condition at 409)
+P: lastByteInHeaderSection <- ADD optHdr.SectionAlignment (SUB optHdr.SizeOfHeaders 1)
+V22(V20): UGT lastByteInHeaderSection optHdr.SizeOfHeaders term
+
+P: sectionAlignPageMask <- SHR (BITNOT SUB optHdr.SectionAlignment 1) 12
+P: nPagesHdrs <- BITAND sectionAlignPageMask SHR lastByteInHeaderSection 12
+# line 369
+P(!V20): nPagesHdrs <- npages
+
+# line 412
+V99(V20): ULE nPagesHdrs npages term
+
+P: nPagesSections <- SUB npages nPagesHdrs
+P: lastSectionEnd <- ADD optHdr.ImageBase MUL nPagesHdrs 4096
+P: tmpNpages <- nPagesSections
+
+
+P: sectionTableOffset <- ADD HEADER.e_lfanew (ADD progHeader.SizeOfOptionalHeader 24)
+P: nSections <- progHeader.NumberOfSections
+
+# This avoids unconstrained sections
+G98: ULE nSections 1 term
+L1: section <- LOOP(HEADER, sectionTableOffset, (sizeof _IMAGE_SECTION_HEADER), nSections, 5) AS _IMAGE_SECTION_HEADER
+
+    # lines (469, 470), and (492, 494)
+    P: virtSize <- section.VirtualSize
+    P: sizeRawData <- section.SizeOfRawData
+    P: sectionSize <- virtSize
+    V23: Eq virtSize 0
+    P(V23): sectionSize <- sizeRawData
+
+
+    # line 509
+    V24(V20): NEq sectionSize 0 term
+    # line 507
+    V25(V20): Eq lastSectionEnd (ADD optHdr.ImageBase section.VirtualAddress) term
+
+    #line 512
+    P(V20): sizePlusAlign <- (ADD optHdr.SectionAlignment (SUB sectionSize 1))
+    V26(V20): UGT sizePlusAlign sectionSize term
+
+    # update lastsectionEnd
+    P(V20): nPtes <- BITAND (SHR sizePlusAlign 12) (SHR (BITNOT (SUB optHdr.SectionAlignment 1)) 12)
+    P(V20): lastSectionEnd <- ADD lastSectionEnd MUL nPtes 4096
+
+
+    # line 525
+    P(V20): rawDataEnd <- ADD section.SizeOfRawData section.PointerToRawData
+    # line 502 (avoid overflow)
+     V97(V20): NOT OVFLADD section.SizeOfRawData section.PointerToRawData term
+
+    P(V20): alignedEnd <- ALIGNUP rawDataEnd optHdr.FileAlignment
+    V27(V20): UGE alignedEnd section.PointerToRawData term
+
+    # line 517
+    P(V20): nPtes <- BITAND (SHR sizePlusAlign 12) (SHR (BITNOT (SUB optHdr.SectionAlignment 1)) 12)
+    V28(V20): ULE nPtes tmpNpages term
+    P(V20): tmpNpages <- SUB tmpNpages nPtes
+
+    # line 473
+    V29(!V20): UGE (ADD sizeRawData section.PointerToRawData) section.PointerToRawData term
+    V30(!V20): EQ section.PointerToRawData section.VirtualAddress term
+    V31(!V20): ULE sectionSize sizeRawData term
+END L1
+
+# line 602
+V32(V20): NEq nSections 0 term
+V33(V20): ULE rawDataEnd FILESIZE term
+V34(V20): ULT tmpNpages (SHR optHdr.SectionAlignment 12) term
+
+# Do not consider POSIX subsystem for now
+# CreateProcessInternalW:987
+V35: OR EQ optHdr.Subsystem 2 EQ optHdr.Subsystem 3 term
+
+# BaseIsImageVersionOK
+V36: AND AND AND UGE optHdr.MajorSubsystemVersion 3 (OR (NEq optHdr.MajorSubsystemVersion 3) (UGE optHdr.MinorSubsystemVersion 0xa)) (ULE optHdr.MajorSubsystemVersion 5) (OR NEq optHdr.MajorSubsystemVersion 5 ULE optHdr.MinorSubsystemVersion 1) term
+
+### this is an implicit condition introduced by io operations like linen 776-783
+P: zero <- INT 0 4
+P: endOfOptHdr <- ADD ADD (ADD zero progHeader.SizeOfOptionalHeader) 24 HEADER.e_lfanew
+P: sectTableSize <- MUL nSections 40
+P: endOfAllHdrs <- ADD endOfOptHdr sectTableSize
+V37: ULT (BITAND endOfOptHdr 0xFFFFF000) FILESIZE term
+### line 801 - not really understood why this is checked
+V38: ULE (ADD sectTableSize (BITAND endOfOptHdr 0xFFF)) FILESIZE term
+
+################ !!!!!!!!!!!!!!!!!!!!!!!!!! check this ones!!!!!!!!!!!
+# MmCreatePeb
+## This function, among other things, dereferences some fields
+## in the LOAD_CONFIG directory
+P: loadConfigDir <- optHdr.DataDirectory[80, 8] as _IMAGE_DATA_DIRECTORY
+P: loadConfigVA <- loadConfigDir.VirtualAddress
+V40: Eq BITAND loadConfigVA 3 0 term
+P: loadConfig <- HEADER[loadConfigVA, 0x40] as _IMAGE_LOAD_CONFIG_DIRECTORY
+V41: ULT (ADD loadConfigVA 0x40) optHdr.SizeOfImage term
+
+# BasepSxsCreateProcessCsrMessage
+## Resource directory
+P: resDir <- optHdr.DataDirectory[16, 8] as _IMAGE_DATA_DIRECTORY
+G42: Eq resDir 0 term
+
+### Checks that the header is not marked as DLL
+V43: Eq (BITAND progHeader.Characteristics 0x2000) 0 term
