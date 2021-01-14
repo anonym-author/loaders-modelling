@@ -7,14 +7,20 @@ Note that this is a `python3` project. If you are still using `python2` (which y
 From within your virtual environment, you can install the dependencies with: `pip install -r requirements.txt`
 
 # Usage  
+## verify.py  
+`verify.py` takes a model and a file as input and tells whether the file respects the constraints in the model (`verification`). (See Section 5.1)  
+
 ## generate.py  
-The `generate.py` script produce a test-case that complies to the rules given in input.  
+The `generate.py` script produce a test-case that complies to the rules given in input (see Section 5.2).  
 The script takes two lists of models. The first list, that starts with the `--assert` flag, is made of by the models whose conditions must be asserted in the test-case. This list must contain at least one model file.  
 The second (and optional) list, tagged with `--negates`, contains those models that the test-case must disown.  
-In other words, the test-case produced complies with all the models in the `assert` list, but with none of those in the `negates` list.  
+In other words, the test-case produced complies with all the models in the `assert` list, but with none of those in the `negates` list (see Section 5.4).  
 
-## verify.py  
-`verify.py` takes a model and a file as input and tells whether the file respects the constraints in the model (`verification`).  
+## explore_conditions.py
+This script performs corner case generation (see Section 5.3).
+
+## differential.py
+This scripts enumerates all the differences among models (see Section 5.5).
 
 ## Generics
 Both scripts should be run from within the root directory of the project.  
